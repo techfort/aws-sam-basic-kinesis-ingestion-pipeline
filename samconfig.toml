@@ -1,0 +1,10 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "kinesis-ingestion"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1nq23i7aviy5t"
+s3_prefix = "kinesis-ingestion"
+region = "eu-west-1"
+capabilities = "CAPABILITY_IAM"
+image_repositories = ["KinesisConsumerFunction=972520707061.dkr.ecr.eu-west-1.amazonaws.com/kinesisingestion905cc646/kinesisconsumerfunctiona083530drepo"]

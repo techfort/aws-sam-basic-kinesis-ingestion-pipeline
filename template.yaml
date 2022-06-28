@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  kinesis-ingestion
+
+  Sample SAM Template for kinesis-ingestion
+  
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 30
+
+Parameters:
+  DatalakeRawAreaBucketName:
+    Type: String
+    Default: daitawsc-datalake-raw
+
+Resources:
+  Datalakes3RawAreaBucket:
+    Type: AWS::S3::Bucket
+    Properties: 
+      BucketName: !Ref DatalakeRawAreaBucketName
+  
+  KinesisIngestionStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: "kinesis-ingestion"
+      RetentionPeriodHours: 24
+      ShardCount: 2
+
+  KinesisS3DeliveryStream:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: "kinesis-s3-delivery"
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt KinesisIngestionStream.Arn
+        RoleARN: arn:aws:iam::972520707061:role/FIrehoseToS3Role
+      S3DestinationConfiguration:
+        BucketARN: !Sub 'arn:aws:s3:::${Datalakes3RawAreaBucket}'
+        CompressionFormat: UNCOMPRESSED
+        ErrorOutputPrefix: "error/"
+        Prefix: "data/"
+        RoleARN: arn:aws:iam::972520707061:role/FIrehoseToS3Role
+
+  ProcessedItemsTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: Number
+      ProvisionedThroughput:
+        ReadCapacityUnits: 2
+        WriteCapacityUnits: 2
+
+  KinesisConsumerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      Architectures:
+        - x86_64
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the SampleTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProcessedItemsTable
+      Environment:
+        Variables:
+          # Make table name accessible as environment variable from function code during execution
+          ITEMS_TABLE: !Ref ProcessedItemsTable
+      Events:
+        Kinesis:
+          Type: Kinesis
+          Properties:
+            BatchSize: 50
+            Stream: !GetAtt KinesisIngestionStream.Arn
+            StartingPosition: TRIM_HORIZON
+
+    Metadata:
+      DockerTag: nodejs14.x-v1
+      DockerContext: ./kinesisingestion
+      Dockerfile: Dockerfile
+
+Outputs:
+  KinesisStreamArn:
+    Description: "ARN of KinesisDataSource"
+    Value: !GetAtt KinesisIngestionStream.Arn
+  KinesisDeliveryStreamArn:
+    Description: "ARN of KinesisDeliveryStream"
+    Value: !GetAtt KinesisS3DeliveryStream.Arn
+  KinesisConsumerLambdaArn:
+    Description: "ARN of KinesisConsumerLambdaArn"
+    Value: !GetAtt KinesisConsumerFunction.Arn
